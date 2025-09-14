@@ -17,7 +17,7 @@ log "Installing core tools..."
 sudo apt-get -yq install --no-install-recommends \
   nmap gobuster enum4linux smbmap smbclient \
   rlwrap tmux jq unzip wget curl git python3-pip python3-venv \
-  build-essential seclists
+  build-essential seclists cherrytree
 
 # --- wordlists ---
 log "Preparing wordlists..."
