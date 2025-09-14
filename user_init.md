@@ -2,13 +2,13 @@
 ```bash
 
 #!/bin/bash
-# HTB bootstrap — core tools + GitHub repos + Python tools in venv (clean).
+# HTB bootstrap — core tools + GitHub clones + prebuilt PEASS binaries + Python tools in venv.
 
 set -e
 export DEBIAN_FRONTEND=noninteractive
 log() { echo "[*] $*"; }
 
-# --- apt update ---
+# --- apt update (safe for Debian testing rollovers) ---
 log "apt update..."
 sudo apt-get -yq update --allow-releaseinfo-change
 
@@ -19,7 +19,7 @@ sudo apt-get -yq install --no-install-recommends \
   rlwrap tmux jq unzip wget curl git python3-pip python3-venv \
   build-essential seclists cherrytree
 
-# --- wordlists ---
+# --- wordlists (rockyou ready) ---
 log "Preparing wordlists..."
 mkdir -p "$HOME/seclists"
 ln -sfn /usr/share/seclists "$HOME/seclists"
@@ -40,16 +40,26 @@ clone_or_pull () {
   fi
 }
 
-# --- GitHub tool repos ---
+# --- GitHub tool repos (for docs/scripts/offline reference) ---
 mkdir -p "$HOME/tools"
-clone_or_pull "https://github.com/epi052/feroxbuster.git" "$HOME/tools/feroxbuster"
-clone_or_pull "https://github.com/carlospolop/PEASS-ng.git" "$HOME/tools/PEASS-ng"
+clone_or_pull "https://github.com/epi052/feroxbuster.git"            "$HOME/tools/feroxbuster"
+clone_or_pull "https://github.com/carlospolop/PEASS-ng.git"          "$HOME/tools/PEASS-ng"
 clone_or_pull "https://github.com/swisskyrepo/PayloadsAllTheThings.git" "$HOME/tools/payloads"
-clone_or_pull "https://github.com/GTFOBins/GTFOBins.github.io.git" "$HOME/tools/gtfobins"
-clone_or_pull "https://github.com/samratashok/nishang.git" "$HOME/tools/nishang"
-clone_or_pull "https://github.com/PowerShellMafia/PowerSploit.git" "$HOME/tools/PowerSploit"
+clone_or_pull "https://github.com/GTFOBins/GTFOBins.github.io.git"   "$HOME/tools/gtfobins"
+clone_or_pull "https://github.com/samratashok/nishang.git"           "$HOME/tools/nishang"
+clone_or_pull "https://github.com/PowerShellMafia/PowerSploit.git"   "$HOME/tools/PowerSploit"
 
-# --- Python tooling in isolated venv ---
+# --- PEASS prebuilt release binaries (ready-to-serve/download) ---
+log "Fetching prebuilt PEASS binaries..."
+mkdir -p "$HOME/tools/peas"
+# linPEAS (bash) prebuilt
+curl -fsSL "https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh" \
+  -o "$HOME/tools/peas/linpeas.sh" && chmod +x "$HOME/tools/peas/linpeas.sh"
+# winPEAS (x64) prebuilt
+curl -fsSL "https://github.com/carlospolop/PEASS-ng/releases/latest/download/winPEASx64.exe" \
+  -o "$HOME/tools/peas/winPEASx64.exe"
+
+# --- Python tooling in isolated venv (avoid system package conflicts) ---
 log "Setting up Python venv for offensive tools..."
 VENV_DIR="$HOME/.venvs/offsec"
 BIN_DIR="$HOME/bin"
@@ -61,29 +71,29 @@ fi
 
 "$VENV_DIR/bin/python" -m pip install -q --upgrade pip setuptools wheel
 "$VENV_DIR/bin/python" -m pip install -q impacket pwncat-cs
-"$VENV_DIR/bin/python" -m pip install -q "git+https://github.com/Porchetta-Industries/CrackMapExec.git"
+# CrackMapExec from GitHub (not PyPI)
+if [ ! -x "$VENV_DIR/bin/cme" ] && [ ! -x "$VENV_DIR/bin/crackmapexec" ]; then
+  "$VENV_DIR/bin/python" -m pip install -q "git+https://github.com/Porchetta-Industries/CrackMapExec.git" || true
+fi
 
-# Symlink common tools into ~/bin so you can just type them
-ln -sfn "$VENV_DIR/bin/cme" "$BIN_DIR/cme"
-ln -sfn "$VENV_DIR/bin/pwncat-cs" "$BIN_DIR/pwncat-cs"
+# Expose common tools via ~/bin so they work without activating the venv
+ln -sfn "$VENV_DIR/bin/cme"        "$BIN_DIR/cme"         2>/dev/null || true
+ln -sfn "$VENV_DIR/bin/pwncat-cs"  "$BIN_DIR/pwncat-cs"   2>/dev/null || true
 for tool in secretsdump.py psexec.py smbclient.py wmiexec.py dcomexec.py; do
   [ -x "$VENV_DIR/bin/$tool" ] && ln -sfn "$VENV_DIR/bin/$tool" "$BIN_DIR/$tool"
 done
+grep -q 'export PATH="$HOME/bin:$PATH"' "$HOME/.profile" 2>/dev/null || echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.profile"
 
-# Make sure ~/bin is in PATH
-grep -q 'export PATH="$HOME/bin:$PATH"' "$HOME/.profile" 2>/dev/null || \
-  echo 'export PATH="$HOME/bin:$PATH"' >> "$HOME/.profile"
-
-# --- Feroxbuster binary build ---
+# --- Feroxbuster binary (install via cargo if not present) ---
 if ! command -v feroxbuster >/dev/null 2>&1; then
   log "Building feroxbuster via cargo..."
   sudo apt-get -yq install --no-install-recommends cargo || true
   cargo install feroxbuster || true
-  grep -q 'HOME/.cargo/bin' "$HOME/.profile" 2>/dev/null || \
-    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.profile"
+  grep -q 'HOME/.cargo/bin' "$HOME/.profile" 2>/dev/null || echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.profile"
 fi
 
 log "Done. Open a new shell or run:  source ~/.profile"
+
 
 ```
 ---
