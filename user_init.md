@@ -1,3 +1,4 @@
+# user_init
 ```bash
 
 #!/bin/bash
@@ -85,3 +86,70 @@ fi
 log "Done. Open a new shell or run:  source ~/.profile"
 
 ```
+---
+# HTB Initial Set-Up
+
+## Core Recon / Enum Tools (via apt)
+
+-   `nmap` → port scanning, service detection, NSE scripts
+-   `gobuster` → directory & virtual host brute forcing
+-   `enum4linux` → SMB/NetBIOS enumeration
+-   `smbmap` → enumerate SMB shares & permissions
+-   `smbclient` → interact with SMB shares
+
+## Utility Tools
+
+-   `rlwrap` → gives readline support (history, arrow keys) to tools like `nc`
+-   `tmux` → terminal multiplexer (manage multiple panes/sessions)
+-   `jq` → parse/manipulate JSON (useful for APIs, JWTs)
+-   `unzip`, `wget`, `curl`, `git` → file & repo handling
+-   `build-essential` → compilers (for exploit building)
+-   `seclists` → wordlists at `~/seclists/`
+    -   RockYou: `~/seclists/Passwords/rockyou.txt`
+
+## Python Offensive Tools (via venv in `~/.venvs/offsec`)
+
+-   `cme` → CrackMapExec (network exploitation, SMB/WinRM/LDAP, etc.)
+-   `pwncat-cs` → post-exploitation handler / persistence shell
+-   **Impacket scripts (symlinked to ~/bin):**
+    -   `secretsdump.py` → dump hashes from SAM/NTDS
+    -   `psexec.py` → get shell via SMB service install
+    -   `wmiexec.py` → WMI command execution
+    -   `dcomexec.py` → DCOM-based command execution
+    -   `smbclient.py` → Python SMB client
+
+## GitHub Repos (cloned into `~/tools/`)
+
+-   `PEASS-ng` → `linPEAS/linpeas.sh` (Linux priv esc) and `winPEAS/winPEASx64.exe`
+-   `PayloadsAllTheThings` → `~/tools/payloads/` (web & exploit payloads)
+-   `GTFOBins` → `~/tools/gtfobins/` (local privesc tricks)
+-   `Nishang` → `~/tools/nishang/` (PowerShell offensive scripts)
+-   `PowerSploit` → `~/tools/PowerSploit/` (post-exploitation PowerShell)
+-   `feroxbuster` → Rust dirbuster (`feroxbuster` binary installed via cargo)
+
+## Feroxbuster (after build)
+
+-   Run with:
+
+    `feroxbuster -u http://target/ -w ~/seclists/Discovery/Web-Content/raft-medium-words.txt`
+
+* * *
+
+### Quick Reference
+
+-   Linux privesc:
+
+    `bash ~/tools/PEASS-ng/linPEAS/linpeas.sh`
+
+-   Windows privesc:
+
+    `~/tools/PEASS-ng/winPEAS/winPEASx64.exe`
+
+-   CrackMapExec SMB:
+
+    `cme smb 10.10.10.0/24 -u user -p pass`
+
+-   Impacket secretsdump:
+
+    `secretsdump.py domain/user:pass@host`
+
